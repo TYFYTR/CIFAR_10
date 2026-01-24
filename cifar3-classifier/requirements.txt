@@ -1,0 +1,9 @@
+transformers
+datasets
+torch
+torchvision
+scikit-learn
+matplotlib
+pillow
+accelerate
+tensorboard

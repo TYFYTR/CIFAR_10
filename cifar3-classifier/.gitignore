@@ -1,0 +1,107 @@
+# .gitignore for ML projects
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Model files (LARGE - never commit these)
+*.pth
+*.pt
+*.bin
+*.onnx
+*.h5
+*.pkl
+*.safetensors
+
+# Datasets (LARGE)
+data/
+datasets/
+*.csv
+*.tsv
+*.json
+*.jsonl
+
+# Training outputs (LARGE)
+results/
+checkpoints/
+logs/
+runs/
+wandb/
+*.log
+
+# Plots (regenerate these)
+plots/
+*.png
+*.jpg
+*.jpeg
+*.pdf
+
+# ML diary (KEEP THIS - it's small)
+# ml_diary/  # Comment this out - you WANT to track this
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+tmp/
+temp/
+*.tmp
+```
+
+---
+
+## What This Does
+
+### **Ignores (LARGE files):**
+- ✓ Model checkpoints (100MB-1GB each)
+- ✓ Datasets (GB of images)
+- ✓ Training logs (spam)
+- ✓ Virtual environments (100s of MB)
+
+### **Tracks (SMALL, important):**
+- ✓ Your code (.py files)
+- ✓ ML diary (JSON files, a few KB)
+- ✓ README.md
+- ✓ requirements.txt
+- ✓ Config files
+
+---
+
+## Critical: NEVER commit these
+```
+# These will bloat your repo to GB
+results/      # Model checkpoints
+data/         # Raw datasets  
+venv/         # Python packages
+*.pth         # PyTorch model files
+```
+
+**If you accidentally commit, repo becomes unusable (too large).**
+
+---
+
+## What TO commit
+```
+src/          # Your code
+ml_diary/     # Run snapshots (small JSON)
+README.md     # Documentation
+requirements.txt  # Dependencies
+.gitignore    # This file
