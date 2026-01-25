@@ -21,14 +21,14 @@ import numpy as np
 # ============================================================
 
 PROJECT_NAME = "cifar3_classifier"
-MODEL_NAME = "microsoft/resnet-50"
+MODEL_NAME = "google/efficientnet-b0"
 CLASSES_TO_USE = [0, 1, 8]  # airplane, automobile, ship
 CLASS_NAMES = ["airplane", "automobile", "ship"]
 
 HYPERPARAMS = {
-    "learning_rate": 5e-5,
-    "batch_size": 16,
-    "num_epochs": 20,
+    "learning_rate": 1e-4,
+    "batch_size": 32,
+    "num_epochs": 10,
     "eval_strategy": "epoch",
 }
 

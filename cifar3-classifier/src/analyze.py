@@ -1,86 +1,279 @@
-"""
-Model Analysis Tools
-====================
-Confusion matrix, per-class metrics, confidence analysis.
-"""
+# # """
+# # Model Analysis Tools
+# # ====================
+# # Confusion matrix, per-class metrics, confidence analysis.
+# # """
 
+# # import matplotlib.pyplot as plt
+# # from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
+# # import torch
+# # import torch.nn.functional as F
+# # import os
+
+# # def run_analysis(trainer, dataset, class_names, save_dir="./plots"):
+# #     """Run complete analysis and save plots."""
+    
+# #     os.makedirs(save_dir, exist_ok=True)
+    
+# #     # Get predictions
+# #     predictions = trainer.predict(dataset['test'])
+# #     y_pred = predictions.predictions.argmax(-1)
+# #     y_true = predictions.label_ids
+    
+# #     # 1. Confusion Matrix
+# #     print("1. Confusion Matrix:")
+# #     cm = confusion_matrix(y_true, y_pred)
+    
+# #     fig, ax = plt.subplots(figsize=(8, 6))
+# #     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
+# #     disp.plot(ax=ax, cmap='Blues', values_format='d')
+# #     ax.set_title('Confusion Matrix - Test Set')
+# #     plt.tight_layout()
+# #     plt.savefig(f'{save_dir}/confusion_matrix.png', dpi=150)
+# #     plt.close()
+# #     print(f"   Saved: {save_dir}/confusion_matrix.png")
+    
+# #     # Print breakdown
+# #     for i, true_class in enumerate(class_names):
+# #         for j, pred_class in enumerate(class_names):
+# #             count = cm[i][j]
+# #             if count > 0:
+# #                 if i == j:
+# #                     print(f"   ✓ {true_class}: {count} correct")
+# #                 else:
+# #                     print(f"   ✗ {true_class} → {pred_class}: {count} mistakes")
+    
+# #     # 2. Per-class metrics
+# #     print("\n2. Per-Class Performance:")
+# #     report = classification_report(y_true, y_pred, target_names=class_names, digits=3)
+# #     print(report)
+    
+# #     # 3. Confidence analysis
+# #     print("\n3. Confidence Distribution:")
+# #     logits = torch.tensor(predictions.predictions)
+# #     probs = F.softmax(logits, dim=1)
+    
+# #     correct_conf = []
+# #     incorrect_conf = []
+    
+# #     for idx in range(len(y_pred)):
+# #         conf = probs[idx][y_pred[idx]].item()
+# #         if y_pred[idx] == y_true[idx]:
+# #             correct_conf.append(conf)
+# #         else:
+# #             incorrect_conf.append(conf)
+    
+# #     if len(correct_conf) > 0:
+# #         print(f"   Correct predictions: {sum(correct_conf)/len(correct_conf):.1%} avg confidence")
+# #     if len(incorrect_conf) > 0:
+# #         print(f"   Incorrect predictions: {sum(incorrect_conf)/len(incorrect_conf):.1%} avg confidence")
+    
+# #     # Plot confidence distribution
+# #     fig, ax = plt.subplots(figsize=(10, 5))
+# #     if len(correct_conf) > 0:
+# #         ax.hist(correct_conf, bins=20, alpha=0.6, label='Correct', color='green')
+# #     if len(incorrect_conf) > 0:
+# #         ax.hist(incorrect_conf, bins=20, alpha=0.6, label='Incorrect', color='red')
+# #     ax.set_xlabel('Confidence')
+# #     ax.set_ylabel('Count')
+# #     ax.set_title('Prediction Confidence Distribution')
+# #     ax.legend()
+# #     plt.tight_layout()
+# #     plt.savefig(f'{save_dir}/confidence_distribution.png', dpi=150)
+# #     plt.close()
+# #     print(f"   Saved: {save_dir}/confidence_distribution.png")
+    
+# #     print("\n✅ Analysis complete!")
+
+
+
+# import json
+# import matplotlib.pyplot as plt
+
+# def load(path="results/run.json"):
+#     with open(path) as f:
+#         return json.load(f)
+
+# def summary(r):
+#     print(f"Test: {r['metrics']['test']:.1%} | Gap: {r['metrics']['gap']:.1%} | Time: {r['metrics']['time_min']:.1f}m")
+
+# def learning_curve(r):
+#     h = r["history"]
+#     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+#     ax1.plot(h["val_loss"], label="val_loss")
+#     ax1.set_title("Loss"); ax1.legend()
+#     ax2.plot(h["val_acc"], label="val_acc")
+#     ax2.set_title("Accuracy"); ax2.legend()
+#     plt.tight_layout()
+#     plt.savefig("plots/learning_curve.png")
+#     print("Saved: plots/learning_curve.png")
+
+# def confusion(r):
+#     import numpy as np
+#     cm = np.array(r["confusion_matrix"])
+#     print("Confusion Matrix:")
+#     print(cm)
+#     # Add heatmap if needed
+
+# if __name__ == "__main__":
+#     r = load()
+#     summary(r)
+#     learning_curve(r)
+
+import json
 import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
-import torch
-import torch.nn.functional as F
-import os
+import numpy as np
 
-def run_analysis(trainer, dataset, class_names, save_dir="./plots"):
-    """Run complete analysis and save plots."""
+def load(path="results/run.json"):
+    with open(path) as f:
+        return json.load(f)
+
+def summary(r):
+    m = r["metrics"]
+    print(f"\n{'='*60}")
+    print(f"TEST: {m['test']:.1%} | GAP: {m['gap']:.1%} | TIME: {m['time_min']:.1f}m")
+    print(f"{'='*60}")
     
-    os.makedirs(save_dir, exist_ok=True)
+    # Diagnosis
+    if m["gap"] > 0.15:
+        print("⚠️  OVERFITTING: Train-val gap >15%. Need regularization.")
+    elif m["gap"] < 0.02 and m["test"] < 0.85:
+        print("⚠️  UNDERFITTING: Low gap but low accuracy. Need more capacity/data.")
+    else:
+        print("✓  Generalization looks reasonable.")
+
+def per_class(r):
+    print(f"\n{'='*60}")
+    print("PER-CLASS BREAKDOWN")
+    print(f"{'='*60}")
+    print(f"{'Class':<12} {'Acc':>8} {'Prec':>8} {'Recall':>8} {'F1':>8}")
+    print("-" * 48)
+    for name, stats in r["per_class"].items():
+        print(f"{name:<12} {stats['accuracy']:>7.1%} {stats['precision']:>7.1%} {stats['recall']:>7.1%} {stats['f1']:>7.1%}")
     
-    # Get predictions
-    predictions = trainer.predict(dataset['test'])
-    y_pred = predictions.predictions.argmax(-1)
-    y_true = predictions.label_ids
+    # Find weakest class
+    weakest = min(r["per_class"].items(), key=lambda x: x[1]["f1"])
+    print(f"\n⚠️  Weakest: {weakest[0]} (F1: {weakest[1]['f1']:.1%})")
+
+def confidence_analysis(r):
+    c = r["confidence"]
+    print(f"\n{'='*60}")
+    print("CONFIDENCE ANALYSIS")
+    print(f"{'='*60}")
+    print(f"Correct predictions:   {c['correct_mean']:.1%} avg confidence")
+    print(f"Incorrect predictions: {c['incorrect_mean']:.1%} avg confidence")
     
-    # 1. Confusion Matrix
-    print("1. Confusion Matrix:")
-    cm = confusion_matrix(y_true, y_pred)
+    gap = c["correct_mean"] - c["incorrect_mean"]
+    if gap < 0.1:
+        print("⚠️  Model is overconfident on wrong predictions. Poor calibration.")
+    else:
+        print(f"✓  Confidence gap: {gap:.1%} (model knows when it's unsure)")
+
+def learning_curve(r, save_dir="plots"):
+    h = r["history"]
+    if not h["val_acc"]:
+        print("No history data.")
+        return
+    
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
+    
+    # Loss curve
+    axes[0].plot(h["val_loss"], 'b-', label="val_loss", linewidth=2)
+    if h["train_loss"]:
+        # Align train_loss to epochs (it logs more frequently)
+        epochs = len(h["val_loss"])
+        train_sampled = h["train_loss"][::max(1, len(h["train_loss"])//epochs)][:epochs]
+        axes[0].plot(train_sampled, 'r--', label="train_loss", alpha=0.7)
+    axes[0].set_xlabel("Epoch")
+    axes[0].set_ylabel("Loss")
+    axes[0].set_title("Loss Curve")
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+    
+    # Accuracy curve
+    axes[1].plot(h["val_acc"], 'b-', marker='o', label="val_acc", linewidth=2)
+    axes[1].set_xlabel("Epoch")
+    axes[1].set_ylabel("Accuracy")
+    axes[1].set_title("Validation Accuracy")
+    axes[1].grid(True, alpha=0.3)
+    
+    # Confidence distribution
+    c = r["confidence"]
+    if c["correct_dist"]:
+        axes[2].hist(c["correct_dist"], bins=15, alpha=0.6, label="Correct", color="green")
+    if c["incorrect_dist"]:
+        axes[2].hist(c["incorrect_dist"], bins=15, alpha=0.6, label="Incorrect", color="red")
+    axes[2].set_xlabel("Confidence")
+    axes[2].set_ylabel("Count")
+    axes[2].set_title("Confidence Distribution")
+    axes[2].legend()
+    
+    plt.tight_layout()
+    plt.savefig(f"{save_dir}/analysis.png", dpi=150)
+    print(f"\nSaved: {save_dir}/analysis.png")
+
+def confusion(r, save_dir="plots"):
+    cm = np.array(r["confusion_matrix"])
+    classes = r["config"]["classes"]
     
     fig, ax = plt.subplots(figsize=(8, 6))
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
-    disp.plot(ax=ax, cmap='Blues', values_format='d')
-    ax.set_title('Confusion Matrix - Test Set')
+    im = ax.imshow(cm, cmap="Blues")
+    
+    ax.set_xticks(range(len(classes)))
+    ax.set_yticks(range(len(classes)))
+    ax.set_xticklabels(classes)
+    ax.set_yticklabels(classes)
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("True")
+    ax.set_title(f"Confusion Matrix (Test Acc: {r['metrics']['test']:.1%})")
+    
+    # Add numbers
+    for i in range(len(classes)):
+        for j in range(len(classes)):
+            ax.text(j, i, cm[i, j], ha="center", va="center", 
+                   color="white" if cm[i,j] > cm.max()/2 else "black")
+    
+    plt.colorbar(im)
     plt.tight_layout()
-    plt.savefig(f'{save_dir}/confusion_matrix.png', dpi=150)
-    plt.close()
-    print(f"   Saved: {save_dir}/confusion_matrix.png")
+    plt.savefig(f"{save_dir}/confusion.png", dpi=150)
+    print(f"Saved: {save_dir}/confusion.png")
+
+def diagnose(r):
+    """Print actionable diagnosis."""
+    print(f"\n{'='*60}")
+    print("DIAGNOSIS & NEXT STEPS")
+    print(f"{'='*60}")
     
-    # Print breakdown
-    for i, true_class in enumerate(class_names):
-        for j, pred_class in enumerate(class_names):
-            count = cm[i][j]
-            if count > 0:
-                if i == j:
-                    print(f"   ✓ {true_class}: {count} correct")
-                else:
-                    print(f"   ✗ {true_class} → {pred_class}: {count} mistakes")
+    m = r["metrics"]
+    c = r["confidence"]
     
-    # 2. Per-class metrics
-    print("\n2. Per-Class Performance:")
-    report = classification_report(y_true, y_pred, target_names=class_names, digits=3)
-    print(report)
+    issues = []
     
-    # 3. Confidence analysis
-    print("\n3. Confidence Distribution:")
-    logits = torch.tensor(predictions.predictions)
-    probs = F.softmax(logits, dim=1)
+    if m["gap"] > 0.15:
+        issues.append(("OVERFITTING", "Try: dropout, data augmentation, fewer epochs, weight decay"))
     
-    correct_conf = []
-    incorrect_conf = []
+    if m["test"] < 0.80:
+        issues.append(("LOW ACCURACY", "Try: more data, larger model, lower learning rate"))
     
-    for idx in range(len(y_pred)):
-        conf = probs[idx][y_pred[idx]].item()
-        if y_pred[idx] == y_true[idx]:
-            correct_conf.append(conf)
-        else:
-            incorrect_conf.append(conf)
+    if c["incorrect_mean"] > 0.7:
+        issues.append(("OVERCONFIDENT", "Try: label smoothing, temperature scaling, mixup"))
     
-    if len(correct_conf) > 0:
-        print(f"   Correct predictions: {sum(correct_conf)/len(correct_conf):.1%} avg confidence")
-    if len(incorrect_conf) > 0:
-        print(f"   Incorrect predictions: {sum(incorrect_conf)/len(incorrect_conf):.1%} avg confidence")
+    weakest = min(r["per_class"].items(), key=lambda x: x[1]["f1"])
+    if weakest[1]["f1"] < 0.7:
+        issues.append((f"WEAK CLASS: {weakest[0]}", "Check: class imbalance, hard examples, augmentation"))
     
-    # Plot confidence distribution
-    fig, ax = plt.subplots(figsize=(10, 5))
-    if len(correct_conf) > 0:
-        ax.hist(correct_conf, bins=20, alpha=0.6, label='Correct', color='green')
-    if len(incorrect_conf) > 0:
-        ax.hist(incorrect_conf, bins=20, alpha=0.6, label='Incorrect', color='red')
-    ax.set_xlabel('Confidence')
-    ax.set_ylabel('Count')
-    ax.set_title('Prediction Confidence Distribution')
-    ax.legend()
-    plt.tight_layout()
-    plt.savefig(f'{save_dir}/confidence_distribution.png', dpi=150)
-    plt.close()
-    print(f"   Saved: {save_dir}/confidence_distribution.png")
-    
-    print("\n✅ Analysis complete!")
+    if issues:
+        for issue, fix in issues:
+            print(f"\n⚠️  {issue}")
+            print(f"   → {fix}")
+    else:
+        print("\n✓ Model looks solid. Consider: more data or harder task.")
+
+if __name__ == "__main__":
+    r = load()
+    summary(r)
+    per_class(r)
+    confidence_analysis(r)
+    diagnose(r)
+    learning_curve(r)
+    confusion(r)
