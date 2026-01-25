@@ -1,59 +1,51 @@
-"""
-CIFAR-3 Classifier Training Script
-===================================
-Fine-tune ResNet-50 on 3 CIFAR-10 classes.
-
-Usage: python src/train.py
-"""
-
+# ============================================================
+# ULTRA-FAST LEARNING VERSION (2-3 min per run)
+# ============================================================
 from datasets import load_dataset
-from transformers import (
-    AutoImageProcessor, 
-    AutoModelForImageClassification, 
-    TrainingArguments, 
-    Trainer
-)
-from sklearn.metrics import accuracy_score
-import numpy as np
+from transformers import AutoImageProcessor, AutoModelForImageClassification, TrainingArguments, Trainer
+from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics import confusion_matrix, classification_report
+import torch
+import matplotlib.pyplot as plt
+import json
+from datetime import datetime
+import time
 
 # ============================================================
-# CONFIGURATION
+# CONFIG - OPTIMIZED FOR SPEED
 # ============================================================
+freeze_backbone = True           # NEW
+load_best_model_at_end = True    # NEW
+metric_for_best_model = "eval_accuracy"
 
-PROJECT_NAME = "cifar3_classifier"
-MODEL_NAME = "google/efficientnet-b0"
-CLASSES_TO_USE = [0, 1, 8]  # airplane, automobile, ship
+
+SAMPLE_SIZE = 1     # 10x smaller (1500 total images)
+BATCH_SIZE = 16        # 2x larger (faster on GPU)
+EPOCHS = 1              # Half the epochs
+LEARNING_RATE = 1e-4
+MODEL_NAME = "google/mobilenet_v2_1.0_224"
+
+CLASSES = [0, 1, 8]
 CLASS_NAMES = ["airplane", "automobile", "ship"]
 
-HYPERPARAMS = {
-    "learning_rate": 1e-4,
-    "batch_size": 32,
-    "num_epochs": 10,
-    "eval_strategy": "epoch",
-}
+print(f"⚡ ULTRA-FAST MODE: {SAMPLE_SIZE} samples, {EPOCHS} epochs, batch {BATCH_SIZE}")
+print(f"Expected time: 2-3 minutes\n")
 
 # ============================================================
-# 1. LOAD DATA
+# LOAD DATA (FAST)
 # ============================================================
 
-print("Loading CIFAR-10 dataset...")
+print("Loading data...")
 dataset = load_dataset("cifar10")
+dataset = dataset.filter(lambda x: x['label'] in CLASSES)
 
-# Filter to 3 classes
-def filter_classes(example):
-    return example['label'] in CLASSES_TO_USE
+label_map = {CLASSES[i]: i for i in range(len(CLASSES))}
+dataset = dataset.map(lambda x: {'label': label_map[x['label']]})
 
-dataset = dataset.filter(filter_classes)
+# Take small sample
+dataset['train'] = dataset['train'].shuffle(seed=42).select(range(SAMPLE_SIZE))
+dataset['test'] = dataset['test'].shuffle(seed=42).select(range(90))  # Small test set
 
-# Remap labels 0,1,8 → 0,1,2
-label_map = {CLASSES_TO_USE[i]: i for i in range(len(CLASSES_TO_USE))}
-def remap_labels(example):
-    example['label'] = label_map[example['label']]
-    return example
-
-dataset = dataset.map(remap_labels)
-
-# Split
 train_val = dataset['train'].train_test_split(test_size=0.2, seed=42)
 dataset = {
     'train': train_val['train'],
@@ -61,24 +53,23 @@ dataset = {
     'test': dataset['test']
 }
 
-print(f"Train: {len(dataset['train'])}")
-print(f"Validation: {len(dataset['validation'])}")
-print(f"Test: {len(dataset['test'])}")
+print(f"✓ Train: {len(dataset['train'])}, Val: {len(dataset['validation'])}, Test: {len(dataset['test'])}")
 
 # ============================================================
-# 2. LOAD MODEL
+# LOAD MODEL
 # ============================================================
 
-print(f"\nLoading {MODEL_NAME}...")
+print(f"Loading {MODEL_NAME}...")
 processor = AutoImageProcessor.from_pretrained(MODEL_NAME)
 model = AutoModelForImageClassification.from_pretrained(
-    MODEL_NAME,
-    num_labels=3,
-    ignore_mismatched_sizes=True
+    MODEL_NAME, num_labels=len(CLASSES), ignore_mismatched_sizes=True
 )
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"✓ Using: {device.upper()}")
+
 # ============================================================
-# 3. PREPROCESS
+# PREPROCESS (FAST)
 # ============================================================
 
 def transform(batch):
@@ -88,34 +79,28 @@ def transform(batch):
 
 print("Preprocessing...")
 for split in ['train', 'validation', 'test']:
-    dataset[split] = dataset[split].map(
-        transform, 
-        batched=True, 
-        remove_columns=['img']
-    )
+    dataset[split] = dataset[split].map(transform, batched=True, remove_columns=['img'])
     dataset[split].set_format('torch')
 
+print("✓ Preprocessed")
+
 # ============================================================
-# 4. TRAINING SETUP
+# TRAINING SETUP
 # ============================================================
 
 def compute_metrics(pred):
-    labels = pred.label_ids
-    preds = pred.predictions.argmax(-1)
-    return {'accuracy': accuracy_score(labels, preds)}
+    return {'accuracy': accuracy_score(pred.label_ids, pred.predictions.argmax(-1))}
 
 training_args = TrainingArguments(
     output_dir="./results",
-    num_train_epochs=HYPERPARAMS['num_epochs'],
-    per_device_train_batch_size=HYPERPARAMS['batch_size'],
-    per_device_eval_batch_size=HYPERPARAMS['batch_size'],
-    learning_rate=HYPERPARAMS['learning_rate'],
-    eval_strategy=HYPERPARAMS['eval_strategy'],
-    save_strategy="epoch",
-    load_best_model_at_end=True,
-    metric_for_best_model="accuracy",
-    logging_dir='./logs',
-    logging_steps=100,
+    num_train_epochs=EPOCHS,
+    per_device_train_batch_size=BATCH_SIZE,
+    per_device_eval_batch_size=BATCH_SIZE,
+    learning_rate=LEARNING_RATE,
+    eval_strategy="epoch",
+    save_strategy="no",  # Don't save checkpoints (faster)
+    logging_steps=10,
+    report_to="none",
 )
 
 trainer = Trainer(
@@ -127,21 +112,23 @@ trainer = Trainer(
 )
 
 # ============================================================
-# 5. TRAIN
+# TRAIN (FAST!)
 # ============================================================
 
 print("\n" + "="*60)
-print("STARTING TRAINING")
+print("⚡ TRAINING")
 print("="*60 + "\n")
 
+start_time = time.time()
 trainer.train()
+training_time = (time.time() - start_time) / 60
 
 # ============================================================
-# 6. EVALUATE
+# EVALUATE
 # ============================================================
 
 print("\n" + "="*60)
-print("FINAL EVALUATION")
+print("📊 RESULTS")
 print("="*60 + "\n")
 
 train_results = trainer.evaluate(dataset['train'])
@@ -151,48 +138,100 @@ test_results = trainer.evaluate(dataset['test'])
 print(f"Training:   {train_results['eval_accuracy']:.1%}")
 print(f"Validation: {val_results['eval_accuracy']:.1%}")
 print(f"Test:       {test_results['eval_accuracy']:.1%}")
+print(f"Time:       {training_time:.1f} minutes ⚡")
+print(f"Gap:        {(train_results['eval_accuracy'] - val_results['eval_accuracy']):.1%}")
+
+# Quick interpretation
+gap = train_results['eval_accuracy'] - val_results['eval_accuracy']
+if gap > 0.15:
+    print("\n⚠️  OVERFITTING detected (>15% gap)")
+elif gap > 0.05:
+    print("\n⚠️  Slight overfitting (5-15% gap)")
+else:
+    print("\n✓ Good generalization (<5% gap)")
+
 
 # ============================================================
-# 7. ANALYSIS
+# CAPTURE FOR CURSOR (COMPLETE)
 # ============================================================
+import json
+import torch.nn.functional as F
+import torch
+from sklearn.metrics import classification_report
 
-print("\n" + "="*60)
-print("DETAILED ANALYSIS")
-print("="*60 + "\n")
+# Extract training history
+history = {"epoch": [], "train_loss": [], "val_loss": [], "val_acc": []}
+for entry in trainer.state.log_history:
+    if "loss" in entry and "eval_loss" not in entry:
+        history["train_loss"].append(round(entry["loss"], 4))
+    if "eval_loss" in entry:
+        history["epoch"].append(entry.get("epoch", len(history["epoch"])+1))
+        history["val_loss"].append(round(entry["eval_loss"], 4))
+        history["val_acc"].append(round(entry.get("eval_accuracy", 0), 4))
 
-from analyze import run_analysis
+# Get predictions with confidence
+predictions = trainer.predict(dataset['test'])
+y_pred = predictions.predictions.argmax(-1)
+y_true = predictions.label_ids
+logits = torch.tensor(predictions.predictions)
+probs = F.softmax(logits, dim=1)
+confidences = probs.max(dim=1).values.tolist()
 
-run_analysis(
-    trainer=trainer,
-    dataset=dataset,
-    class_names=CLASS_NAMES,
-    save_dir="./plots"
-)
+# Confidence breakdown
+correct_conf = [confidences[i] for i in range(len(y_pred)) if y_pred[i] == y_true[i]]
+incorrect_conf = [confidences[i] for i in range(len(y_pred)) if y_pred[i] != y_true[i]]
 
-# ============================================================
-# 8. SAVE TO DIARY
-# ============================================================
+# Per-class metrics
+report = classification_report(y_true, y_pred, target_names=CLASS_NAMES, output_dict=True)
 
-from ml_diary import save_run_snapshot
+# Calculate confusion matrix
+predictions = trainer.predict(dataset['test'])
+y_pred = predictions.predictions.argmax(-1)
+y_true = predictions.label_ids
+cm = confusion_matrix(y_true, y_pred)
 
-save_run_snapshot(
-    project_name=PROJECT_NAME,
-    model_name=MODEL_NAME,
-    dataset_info={
-        "source": "CIFAR-10",
+results = {
+    "config": {
+        "samples": SAMPLE_SIZE,
+        "batch": BATCH_SIZE,
+        "epochs": EPOCHS,
+        "lr": LEARNING_RATE,
+        "model": MODEL_NAME,
         "classes": CLASS_NAMES,
-        "train_size": len(dataset['train']),
-        "test_size": len(dataset['test'])
     },
-    hyperparameters=HYPERPARAMS,
-    results={
-        "train_acc": train_results['eval_accuracy'],
-        "val_acc": val_results['eval_accuracy'],
-        "test_acc": test_results['eval_accuracy'],
-        "train_val_gap": train_results['eval_accuracy'] - val_results['eval_accuracy']
+    "metrics": {
+        "train": round(train_results['eval_accuracy'], 4),
+        "val": round(val_results['eval_accuracy'], 4),
+        "test": round(test_results['eval_accuracy'], 4),
+        "gap": round(train_results['eval_accuracy'] - val_results['eval_accuracy'], 4),
+        "time_min": round(training_time, 2),
     },
-    notes="First clean run with good data. [Add your observations here]",
-    confusion_matrix_path="./plots/confusion_matrix.png"
-)
+    "per_class": {
+        name: {
+            "accuracy": round(cm[i][i]/cm[i].sum(), 4),
+            "precision": round(report[name]["precision"], 4),
+            "recall": round(report[name]["recall"], 4),
+            "f1": round(report[name]["f1-score"], 4),
+            "support": int(report[name]["support"]),
+        } for i, name in enumerate(CLASS_NAMES)
+    },
+    "confidence": {
+        "correct_mean": round(sum(correct_conf)/len(correct_conf), 4) if correct_conf else 0,
+        "incorrect_mean": round(sum(incorrect_conf)/len(incorrect_conf), 4) if incorrect_conf else 0,
+        "correct_dist": [round(c, 3) for c in correct_conf],
+        "incorrect_dist": [round(c, 3) for c in incorrect_conf],
+    },
+    "confusion_matrix": cm.tolist(),
+    "history": history,
+    "predictions": {
+        "y_true": y_true.tolist(),
+        "y_pred": y_pred.tolist(),
+        "confidences": [round(c, 4) for c in confidences],
+    },
+}
 
-print("\n✅ Training complete! Check ml_diary/ for snapshot.")
+with open("run.json", "w") as f:
+    json.dump(results, f)
+
+from google.colab import files
+files.download("run.json")

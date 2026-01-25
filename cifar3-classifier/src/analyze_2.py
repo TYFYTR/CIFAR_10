@@ -2,7 +2,7 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 
-def load(path="results/run.json"):
+def load(path="results/run1.json"):
     with open(path) as f:
         return json.load(f)
 
@@ -87,8 +87,8 @@ def learning_curve(r, save_dir="plots"):
     axes[2].legend()
     
     plt.tight_layout()
-    plt.savefig(f"{save_dir}/analysis.png", dpi=150)
-    print(f"\nSaved: {save_dir}/analysis.png")
+    plt.savefig(f"{save_dir}/analysis1.png", dpi=150)
+    print(f"\nSaved: {save_dir}/analysis1.png")
 
 def confusion(r, save_dir="plots"):
     cm = np.array(r["confusion_matrix"])
@@ -113,8 +113,8 @@ def confusion(r, save_dir="plots"):
     
     plt.colorbar(im)
     plt.tight_layout()
-    plt.savefig(f"{save_dir}/confusion.png", dpi=150)
-    print(f"Saved: {save_dir}/confusion.png")
+    plt.savefig(f"{save_dir}/confusion1.png", dpi=150)
+    print(f"Saved: {save_dir}/confusion1.png")
 
 def diagnose(r):
     """Print actionable diagnosis."""

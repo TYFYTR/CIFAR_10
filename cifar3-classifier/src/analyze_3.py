@@ -1,8 +1,10 @@
 import json
 import matplotlib.pyplot as plt
 import numpy as np
+import os
+import glob
 
-def load(path="results/run.json"):
+def load(path="results/run3.json"):
     with open(path) as f:
         return json.load(f)
 
@@ -47,7 +49,7 @@ def confidence_analysis(r):
     else:
         print(f"✓  Confidence gap: {gap:.1%} (model knows when it's unsure)")
 
-def learning_curve(r, save_dir="plots"):
+def learning_curve(r, save_dir="plots", filename="run3"):
     h = r["history"]
     if not h["val_acc"]:
         print("No history data.")
@@ -87,10 +89,10 @@ def learning_curve(r, save_dir="plots"):
     axes[2].legend()
     
     plt.tight_layout()
-    plt.savefig(f"{save_dir}/analysis.png", dpi=150)
-    print(f"\nSaved: {save_dir}/analysis.png")
+    plt.savefig(f"{save_dir}/analysis_{filename}.png", dpi=150)
+    print(f"\nSaved: {save_dir}/analysis_{filename}.png")
 
-def confusion(r, save_dir="plots"):
+def confusion(r, save_dir="plots", filename="run3"):
     cm = np.array(r["confusion_matrix"])
     classes = r["config"]["classes"]
     
@@ -113,8 +115,8 @@ def confusion(r, save_dir="plots"):
     
     plt.colorbar(im)
     plt.tight_layout()
-    plt.savefig(f"{save_dir}/confusion.png", dpi=150)
-    print(f"Saved: {save_dir}/confusion.png")
+    plt.savefig(f"{save_dir}/confusion_{filename}.png", dpi=150)
+    print(f"Saved: {save_dir}/confusion_{filename}.png")
 
 def diagnose(r):
     """Print actionable diagnosis."""
@@ -148,10 +150,27 @@ def diagnose(r):
         print("\n✓ Model looks solid. Consider: more data or harder task.")
 
 if __name__ == "__main__":
-    r = load()
-    summary(r)
-    per_class(r)
-    confidence_analysis(r)
-    diagnose(r)
-    learning_curve(r)
-    confusion(r)
+    # Find all JSON files in results folder
+    results_dir = "results"
+    json_files = glob.glob(os.path.join(results_dir, "*.json"))
+    
+    if not json_files:
+        print(f"No JSON files found in {results_dir}/")
+        exit(1)
+    
+    # Process each JSON file
+    for json_path in sorted(json_files):
+        # Extract filename without extension (e.g., "run3" from "results/run3.json")
+        filename = os.path.splitext(os.path.basename(json_path))[0]
+        
+        print(f"\n{'='*60}")
+        print(f"Processing: {json_path}")
+        print(f"{'='*60}")
+        
+        r = load(json_path)
+        summary(r)
+        per_class(r)
+        confidence_analysis(r)
+        diagnose(r)
+        learning_curve(r, filename=filename)
+        confusion(r, filename=filename)
