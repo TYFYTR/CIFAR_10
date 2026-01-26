@@ -25,8 +25,8 @@ EPOCHS = 1              # Half the epochs
 LEARNING_RATE = 1e-4
 MODEL_NAME = "google/mobilenet_v2_1.0_224"
 
-CLASSES = [0, 1, 8]
-CLASS_NAMES = ["airplane", "automobile", "ship"]
+CLASSES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+CLASS_NAMES = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
 
 print(f"⚡ ULTRA-FAST MODE: {SAMPLE_SIZE} samples, {EPOCHS} epochs, batch {BATCH_SIZE}")
 print(f"Expected time: 2-3 minutes\n")
@@ -37,10 +37,7 @@ print(f"Expected time: 2-3 minutes\n")
 
 print("Loading data...")
 dataset = load_dataset("cifar10")
-dataset = dataset.filter(lambda x: x['label'] in CLASSES)
-
-label_map = {CLASSES[i]: i for i in range(len(CLASSES))}
-dataset = dataset.map(lambda x: {'label': label_map[x['label']]})
+# Using all 10 classes, no filtering or label remapping needed
 
 # Take small sample
 dataset['train'] = dataset['train'].shuffle(seed=42).select(range(SAMPLE_SIZE))
