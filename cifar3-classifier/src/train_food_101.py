@@ -1,10 +1,15 @@
 # ============================================================
 # ULTRA-FAST LEARNING VERSION (2-3 min per run)
 # ============================================================
+
+
+
 from datasets import load_dataset
 from transformers import AutoImageProcessor, AutoModelForImageClassification, TrainingArguments, Trainer
 from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
 from sklearn.metrics import confusion_matrix, classification_report
+from transformers import EarlyStoppingCallback
+from torchvision import transforms
 import torch
 import matplotlib.pyplot as plt
 import json
@@ -19,17 +24,18 @@ load_best_model_at_end = True    # NEW
 metric_for_best_model = "eval_accuracy"
 
 
-SAMPLE_SIZE = 1     # 10x smaller (1500 total images)
-BATCH_SIZE = 16        # 2x larger (faster on GPU)
-EPOCHS = 1              # Half the epochs
-LEARNING_RATE = 1e-4
+SAMPLE_SIZE = 100    # 10x smaller (1500 total images)
+BATCH_SIZE = 4         # 2x larger (faster on GPU)
+EPOCHS = 1        # Half the epochs
+LEARNING_RATE = 0.00005
 MODEL_NAME = "google/mobilenet_v2_1.0_224"
 
 CLASSES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 CLASS_NAMES = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
 
-print(f"⚡ ULTRA-FAST MODE: {SAMPLE_SIZE} samples, {EPOCHS} epochs, batch {BATCH_SIZE}")
-print(f"Expected time: 2-3 minutes\n")
+
+print(f"⚡ MODE: {SAMPLE_SIZE} samples, {EPOCHS} epochs, batch {BATCH_SIZE}")
+
 
 # ============================================================
 # LOAD DATA (FAST)
@@ -37,7 +43,7 @@ print(f"Expected time: 2-3 minutes\n")
 
 print("Loading data...")
 dataset = load_dataset("cifar10")
-# Using all 10 classes, no filtering or label remapping needed
+
 
 # Take small sample
 dataset['train'] = dataset['train'].shuffle(seed=42).select(range(SAMPLE_SIZE))
@@ -69,10 +75,29 @@ print(f"✓ Using: {device.upper()}")
 # PREPROCESS (FAST)
 # ============================================================
 
+    # Create augmentation pipeline
+train_transforms = transforms.Compose([
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.RandomRotation(15),
+    transforms.ColorJitter(brightness=0.2, contrast=0.2),
+])
+
 def transform(batch):
-    inputs = processor(batch['img'], return_tensors='pt')
+    # Apply augmentation only to training data
+    if batch.get('is_train', False):
+        imgs = [train_transforms(img) for img in batch['img']]
+    else:
+        imgs = batch['img']
+    
+    inputs = processor(imgs, return_tensors='pt')
     inputs['labels'] = batch['label']
     return inputs
+
+
+# Mark training split
+dataset['train'] = dataset['train'].map(lambda x: {**x, 'is_train': True})
+dataset['validation'] = dataset['validation'].map(lambda x: {**x, 'is_train': False})
+dataset['test'] = dataset['test'].map(lambda x: {**x, 'is_train': False})
 
 print("Preprocessing...")
 for split in ['train', 'validation', 'test']:
@@ -94,8 +119,12 @@ training_args = TrainingArguments(
     per_device_train_batch_size=BATCH_SIZE,
     per_device_eval_batch_size=BATCH_SIZE,
     learning_rate=LEARNING_RATE,
+    label_smoothing_factor=0.1,  # Softens overconfident predictions
+    weight_decay=0.01,
+    load_best_model_at_end=True,
+    metric_for_best_model="eval_loss",
     eval_strategy="epoch",
-    save_strategy="no",  # Don't save checkpoints (faster)
+    save_strategy="epoch",  # Don't save checkpoints (faster)
     logging_steps=10,
     report_to="none",
 )
@@ -105,6 +134,7 @@ trainer = Trainer(
     args=training_args,
     train_dataset=dataset['train'],
     eval_dataset=dataset['validation'],
+    callbacks=[EarlyStoppingCallback(early_stopping_patience=5)],
     compute_metrics=compute_metrics,
 )
 
@@ -227,8 +257,3 @@ results = {
     },
 }
 
-with open("run.json", "w") as f:
-    json.dump(results, f)
-
-from google.colab import files
-files.download("run.json")
