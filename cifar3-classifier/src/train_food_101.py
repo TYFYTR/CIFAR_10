@@ -78,8 +78,10 @@ print(f"✓ Using: {device.upper()}")
     # Create augmentation pipeline
 train_transforms = transforms.Compose([
     transforms.RandomHorizontalFlip(p=0.5),
-    transforms.RandomRotation(15),
-    transforms.ColorJitter(brightness=0.2, contrast=0.2),
+    transforms.RandomRotation(20),  # Food can be at any angle
+    transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),  # Lighting varies!
+    transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),  # Zoom in/out
+    transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # Slight shifts
 ])
 
 def transform(batch):
