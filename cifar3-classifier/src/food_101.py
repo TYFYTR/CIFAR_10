@@ -4,7 +4,7 @@
 
 
 from datasets import load_dataset
-from transformers import AutoImageProcessor, AutoModelForImageClassification, TrainingArguments, Trainer
+from transformers import AutoImageProcessor, AutoModelForImageClassification, TrainingArguments, Trainer, EarlyStoppingCallback
 from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
 from sklearn.metrics import confusion_matrix, classification_report
 from torchvision import transforms
@@ -29,6 +29,7 @@ LEARNING_RATE = 8e-3
 MODEL_NAME = "google/mobilenet_v2_1.0_224"
 
 WEIGHT_DECAY = 0.1
+LABEL_SMOOTHING_FACTOR = 0.1
 
 CLASSES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 CLASS_NAMES = ["apple_pie", "baby_back_ribs", "baklava", "beef_carpaccio", "beef_tartare", 'beet_salad' ,'beignets', 'bibimbap', 'bread_pudding', 'breakfast_burrito']
@@ -152,6 +153,7 @@ training_args = TrainingArguments(
     save_strategy="no",  # Don't save checkpoints (faster)
     logging_steps=10,
     report_to="none",
+    label_smoothing_factor=LABEL_SMOOTHING_FACTOR,
 )
 
 trainer = Trainer(
@@ -172,6 +174,7 @@ print(f"Model: {MODEL_NAME}")
 print(f"Classes: {CLASS_NAMES}")
 print(f"Sample size: {SAMPLE_SIZE}")
 print(f"Weight decay: {WEIGHT_DECAY}")
+print(f"Label smoothing factor: {LABEL_SMOOTHING_FACTOR}")
 
 print(f"Train sample label: {dataset['train'][0]['labels']}")
 print(f"Val sample label: {dataset['validation'][0]['labels']}")
