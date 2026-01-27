@@ -11,6 +11,7 @@ from sklearn.metrics import confusion_matrix, classification_report
 from transformers import EarlyStoppingCallback
 from torchvision import transforms
 import torch
+import numpy as np
 import matplotlib.pyplot as plt
 import json
 from datetime import datetime
@@ -84,10 +85,60 @@ train_transforms = transforms.Compose([
     transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # Slight shifts
 ])
 
+def mixup(img1, img2, alpha=0.2):
+    """Mixup augmentation: blends two images"""
+    lam = np.random.beta(alpha, alpha)
+    
+    # Convert PIL images to numpy arrays
+    img1_np = np.array(img1, dtype=np.float32)
+    img2_np = np.array(img2, dtype=np.float32)
+    
+    # Ensure same shape (resize img2 to match img1 if needed)
+    if img1_np.shape != img2_np.shape:
+        from PIL import Image
+        img2_pil = Image.fromarray(img2_np.astype(np.uint8))
+        img1_pil = Image.fromarray(img1_np.astype(np.uint8))
+        img2_pil = img2_pil.resize(img1_pil.size, Image.BILINEAR)
+        img2_np = np.array(img2_pil, dtype=np.float32)
+    
+    # Mix images
+    mixed_img = lam * img1_np + (1 - lam) * img2_np
+    mixed_img = np.clip(mixed_img, 0, 255).astype(np.uint8)
+    
+    # Convert back to PIL Image
+    from PIL import Image
+    return Image.fromarray(mixed_img)
+
 def transform(batch):
     # Apply augmentation only to training data
     if batch.get('is_train', False):
         imgs = [train_transforms(img) for img in batch['img']]
+        
+        # Apply mixup to training images (randomly mix pairs)
+        if len(imgs) > 1:
+            mixed_imgs = []
+            labels = batch['label']
+            mixed_labels = []
+            
+            # Shuffle indices for random pairing
+            indices = list(range(len(imgs)))
+            np.random.shuffle(indices)
+            
+            # Apply mixup to pairs
+            for i in range(len(imgs)):
+                if np.random.random() < 0.5:  # 50% chance to apply mixup
+                    # Pair with another random image
+                    j = indices[(i + 1) % len(indices)]
+                    mixed_img = mixup(imgs[i], imgs[j], alpha=0.2)
+                    mixed_imgs.append(mixed_img)
+                    # Mix labels proportionally (we'll handle this in the loss)
+                    mixed_labels.append(labels[i])  # Keep original label for simplicity
+                else:
+                    mixed_imgs.append(imgs[i])
+                    mixed_labels.append(labels[i])
+            
+            imgs = mixed_imgs
+            batch['label'] = mixed_labels
     else:
         imgs = batch['img']
     
