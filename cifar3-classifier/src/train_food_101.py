@@ -5,11 +5,12 @@
 
 
 from datasets import load_dataset
-from transformers import AutoImageProcessor, AutoModelForImageClassification, TrainingArguments, Trainer
+from transformers import AutoImageProcessor, AutoModelForImageClassification, TrainingArguments, Trainer, get_cosine_schedule_with_warmup
 from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
 from sklearn.metrics import confusion_matrix, classification_report
 from transformers import EarlyStoppingCallback
 from torchvision import transforms
+
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -174,6 +175,8 @@ training_args = TrainingArguments(
     learning_rate=LEARNING_RATE,
     label_smoothing_factor=0.1,  # Softens overconfident predictions
     weight_decay=0.01,
+    lr_scheduler_type="cosine",
+    warmup_steps=500,
     load_best_model_at_end=True,
     metric_for_best_model="eval_loss",
     eval_strategy="epoch",
