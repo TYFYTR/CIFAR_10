@@ -194,6 +194,53 @@ trainer = Trainer(
     compute_metrics=compute_metrics,
 )
 
+# === test learning parameters ===
+
+print("\n" + "="*60)
+print("🔍 PRE-FLIGHT CHECKS")
+print("="*60)
+
+# 1. Check training args
+print("\n1. Training Arguments:")
+print(f"   Weight decay: {training_args.weight_decay}")
+print(f"   Learning rate: {training_args.learning_rate}")
+print(f"   Label smoothing: {training_args.label_smoothing_factor}")
+print(f"   Load best model: {training_args.load_best_model_at_end}")
+
+# 2. Check callbacks
+print("\n2. Callbacks:")
+callback_names = [type(cb).__name__ for cb in trainer.callback_handler.callbacks]
+print(f"   Registered: {callback_names}")
+has_early_stopping = 'EarlyStoppingCallback' in callback_names
+print(f"   Early stopping active: {'✓' if has_early_stopping else '❌ MISSING!'}")
+
+# 3. Check data augmentation (sample 1 image)
+print("\n3. Data Augmentation Check:")
+train_sample = dataset['train'][0]
+val_sample = dataset['validation'][0]
+print(f"   Train sample keys: {list(train_sample.keys())}")
+print(f"   Val sample keys: {list(val_sample.keys())}")
+
+# 4. Check dataset sizes
+print("\n4. Dataset Sizes:")
+print(f"   Train: {len(dataset['train'])} samples")
+print(f"   Validation: {len(dataset['validation'])} samples")
+
+# 5. Check model
+print("\n5. Model:")
+print(f"   Model name: {model.config.name_or_path if hasattr(model.config, 'name_or_path') else 'Unknown'}")
+print(f"   Num labels: {model.config.num_labels}")
+
+print("\n" + "="*60)
+print("If anything looks wrong above, STOP and fix it!")
+print("="*60 + "\n")
+
+
+
+
+#input("Press Enter to start training...")  # Pause so you can read the checks
+
+
 # ============================================================
 # TRAIN (FAST!)
 # ============================================================

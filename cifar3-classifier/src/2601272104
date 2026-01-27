@@ -20,9 +20,9 @@ load_best_model_at_end = True    # NEW
 metric_for_best_model = "eval_accuracy"
 
 
-SAMPLE_SIZE = 500    # 10x smaller (1500 total images)
+SAMPLE_SIZE = 10    # 10x smaller (1500 total images)
 BATCH_SIZE = 16        # 2x larger (faster on GPU)
-EPOCHS = 3            # Half the epochs
+EPOCHS = 1            # Half the epochs
 LEARNING_RATE = 8e-3
 MODEL_NAME = "google/mobilenet_v2_1.0_224"
 
@@ -244,6 +244,3 @@ results = {
 
 with open("run.json", "w") as f:
     json.dump(results, f)
-
-from google.colab import files
-files.download("run.json")

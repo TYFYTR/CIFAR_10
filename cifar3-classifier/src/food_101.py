@@ -2,10 +2,12 @@
 # ULTRA-FAST LEARNING VERSION (2-3 min per run)
 # ============================================================
 
+
 from datasets import load_dataset
 from transformers import AutoImageProcessor, AutoModelForImageClassification, TrainingArguments, Trainer
 from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
 from sklearn.metrics import confusion_matrix, classification_report
+from torchvision import transforms
 import torch
 import matplotlib.pyplot as plt
 import json
@@ -20,16 +22,20 @@ load_best_model_at_end = True    # NEW
 metric_for_best_model = "eval_accuracy"
 
 
-SAMPLE_SIZE = 500    # 10x smaller (1500 total images)
+SAMPLE_SIZE = 50    # 10x smaller (1500 total images)
 BATCH_SIZE = 16        # 2x larger (faster on GPU)
-EPOCHS = 3            # Half the epochs
+EPOCHS = 1            # Half the epochs
 LEARNING_RATE = 8e-3
 MODEL_NAME = "google/mobilenet_v2_1.0_224"
+
+WEIGHT_DECAY = 0.1
 
 CLASSES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 CLASS_NAMES = ["apple_pie", "baby_back_ribs", "baklava", "beef_carpaccio", "beef_tartare", 'beet_salad' ,'beignets', 'bibimbap', 'bread_pudding', 'breakfast_burrito']
 
 
+# CLASSES = [0, 1,]
+# CLASS_NAMES = ["apple_pie", "baby_back_ribs",]
 
 
 
@@ -43,6 +49,14 @@ print(f"⚡ MODE: {SAMPLE_SIZE} samples, {EPOCHS} epochs, batch {BATCH_SIZE}")
 
 print("Loading data...")
 dataset = load_dataset("ethz/food101")
+
+# Filter dataset to only include CLASSES before sampling
+print(f"Filtering dataset to classes: {CLASSES}...")
+dataset['train'] = dataset['train'].filter(lambda x: x['label'] in CLASSES)
+if 'validation' in dataset:
+    dataset['validation'] = dataset['validation'].filter(lambda x: x['label'] in CLASSES)
+if 'test' in dataset:
+    dataset['test'] = dataset['test'].filter(lambda x: x['label'] in CLASSES)
 
 # Take small sample
 dataset['train'] = dataset['train'].shuffle(seed=42).select(range(SAMPLE_SIZE))
@@ -67,7 +81,7 @@ print(f"✓ Train: {len(dataset['train'])}, Val: {len(dataset['validation'])}, T
 print(f"Loading {MODEL_NAME}...")
 processor = AutoImageProcessor.from_pretrained(MODEL_NAME)
 model = AutoModelForImageClassification.from_pretrained(
-    MODEL_NAME, num_labels=len(CLASSES), ignore_mismatched_sizes=True # change number to amoutn of classes 
+    MODEL_NAME, num_labels=len(CLASSES), ignore_mismatched_sizes=True # change number to amoutn of classes
 )
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -77,10 +91,41 @@ print(f"✓ Using: {device.upper()}")
 # PREPROCESS (FAST)
 # ============================================================
 
+
+
+
+# Create augmentation pipeline
+train_transforms = transforms.Compose([
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.RandomRotation(20),  # Food can be at any angle
+    transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),  # Lighting varies!
+    transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),  # Zoom in/out
+    transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # Slight shifts
+])
+
 def transform(batch):
-    inputs = processor(batch['image'], return_tensors='pt')
-    inputs['labels'] = [1 if y in CLASSES else 0 for y in batch['label']]
+    from PIL import Image
+    
+    imgs = batch['image']
+    
+    # Apply augmentation only to training data
+    if batch.get('is_train', False):
+        imgs = [train_transforms(img.convert('RGB')) for img in imgs]
+    else:
+        imgs = [img.convert('RGB') for img in imgs]
+    
+    # Process images
+    inputs = processor(imgs, return_tensors='pt')
+    
+    # Labels should just be the batch labels (already 0-indexed if filtered correctly)
+    inputs['labels'] = batch['label']
+    
     return inputs
+
+# Mark training split
+dataset['train'] = dataset['train'].map(lambda x: {**x, 'is_train': True})
+dataset['validation'] = dataset['validation'].map(lambda x: {**x, 'is_train': False})
+dataset['test'] = dataset['test'].map(lambda x: {**x, 'is_train': False})
 
 print("Preprocessing...")
 for split in ['train', 'validation', 'test']:
@@ -102,6 +147,7 @@ training_args = TrainingArguments(
     per_device_train_batch_size=BATCH_SIZE,
     per_device_eval_batch_size=BATCH_SIZE,
     learning_rate=LEARNING_RATE,
+    weight_decay= WEIGHT_DECAY,
     eval_strategy="epoch",
     save_strategy="no",  # Don't save checkpoints (faster)
     logging_steps=10,
@@ -115,6 +161,25 @@ trainer = Trainer(
     eval_dataset=dataset['validation'],
     compute_metrics=compute_metrics,
 )
+
+# ============================================================
+# Check point 
+# ============================================================
+print(f"Learning rate: {LEARNING_RATE}")
+print(f"Batch size: {BATCH_SIZE}")
+print(f"Epochs: {EPOCHS}")
+print(f"Model: {MODEL_NAME}")
+print(f"Classes: {CLASS_NAMES}")
+print(f"Sample size: {SAMPLE_SIZE}")
+print(f"Weight decay: {WEIGHT_DECAY}")
+
+print(f"Train sample label: {dataset['train'][0]['labels']}")
+print(f"Val sample label: {dataset['validation'][0]['labels']}")
+print(f"Expected range: 0 to {len(CLASSES)-1}")
+
+
+
+input("Press Enter to continue...")
 
 # ============================================================
 # TRAIN (FAST!)
@@ -244,6 +309,3 @@ results = {
 
 with open("run.json", "w") as f:
     json.dump(results, f)
-
-from google.colab import files
-files.download("run.json")

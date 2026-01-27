@@ -1,8 +1,13 @@
-import tensorflow_datasets as tfds
+# ============================================================
+# ULTRA-FAST LEARNING VERSION (2-3 min per run)
+# ============================================================
+
+
+
+from datasets import load_dataset
 from transformers import AutoImageProcessor, AutoModelForImageClassification, TrainingArguments, Trainer
 from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
 from sklearn.metrics import confusion_matrix, classification_report
-from torchvision import transforms
 import torch
 import matplotlib.pyplot as plt
 import json
@@ -10,97 +15,224 @@ from datetime import datetime
 import time
 
 # ============================================================
-# CONFIG - Number of classes to use
+# CONFIG - OPTIMIZED FOR SPEED
 # ============================================================
-NUM_CLASSES = 10  # Change this to use different number of classes (max 101)
+freeze_backbone = True           # NEW
+load_best_model_at_end = True    # NEW
+metric_for_best_model = "eval_accuracy"
 
-print(f"Loading Food-101 using TensorFlow Datasets...")
-print(f"Using first {NUM_CLASSES} classes\n")
 
-try:
-    # Load Food-101 dataset using tfds.image_classification.Food101
-    # Access the builder through tfds
-    builder = tfds.image_classification.Food101()
-    builder.download_and_prepare()
-    dataset = builder.as_dataset(as_supervised=True)
-    info = builder.info
-    
-    # Get all class names from dataset info
-    all_class_names = info.features['label'].names
-    
-    # Filter to selected number of classes
-    class_names = all_class_names[:NUM_CLASSES]
-    
-    print(f"✓ Dataset loaded successfully!")
-    print(f"✓ Total available classes: {len(all_class_names)}")
-    print(f"✓ Using classes: {len(class_names)}")
-    print(f"✓ Total train samples: {info.splits['train'].num_examples}")
-    print(f"✓ Total test samples: {info.splits['test'].num_examples}")
-    
-    # Print selected class names
-    print(f"\n{'='*60}")
-    print(f"SELECTED CLASS NAMES (first {NUM_CLASSES}):")
-    print(f"{'='*60}")
-    for idx, name in enumerate(class_names):
-        print(f"{idx:3d}: {name}")
-    
-    # Filter dataset to only include selected classes
-    print(f"\n{'='*60}")
-    print(f"Filtering dataset to first {NUM_CLASSES} classes...")
-    print(f"{'='*60}")
-    
-    def filter_classes(image, label):
-        """Filter function to keep only samples with labels < NUM_CLASSES"""
-        return label < NUM_CLASSES
-    
-    # Filter train and test datasets
-    train_ds = dataset['train'].filter(filter_classes)
-    test_ds = dataset['test'].filter(filter_classes)
-    
-    # Count samples in filtered datasets
-    train_count = sum(1 for _ in train_ds)
-    test_count = sum(1 for _ in test_ds)
-    
-    print(f"✓ Filtered train samples: {train_count}")
-    print(f"✓ Filtered test samples: {test_count}")
-    
-    # Print sample data
-    print(f"\n{'='*60}")
-    print("SAMPLE DATA:")
-    print(f"{'='*60}")
-    for image, label in train_ds.take(1):
-        label_np = int(label.numpy())
-        print(f"Label: {label_np} ({class_names[label_np]})")
-        print(f"Image shape: {image.shape}")
-        print(f"Image dtype: {image.dtype}")
-        break
-    
-    # Count samples per class in filtered train set
-    print(f"\n{'='*60}")
-    print(f"SAMPLE COUNTS PER CLASS (in filtered dataset):")
-    print(f"{'='*60}")
-    class_counts = {i: 0 for i in range(NUM_CLASSES)}
-    for image, label in train_ds:
-        label_np = int(label.numpy())
-        if label_np < NUM_CLASSES:
-            class_counts[label_np] += 1
-    
-    for idx in range(NUM_CLASSES):
-        print(f"Class {idx:3d} ({class_names[idx]:<30}): {class_counts[idx]:5d} samples")
-    
-    # Store filtered datasets for use
-    filtered_dataset = {
-        'train': train_ds,
-        'test': test_ds,
-        'class_names': class_names,
-        'num_classes': NUM_CLASSES
-    }
-    
-    print(f"\n✓ Dataset ready! Use 'filtered_dataset' dict to access train/test splits and class names")
-    
-except Exception as e:
-    print(f"\n❌ Error loading dataset: {e}")
-    print(f"Error type: {type(e).__name__}")
-    import traceback
-    traceback.print_exc()
+SAMPLE_SIZE = 50    # 10x smaller (1500 total images)
+BATCH_SIZE = 16        # 2x larger (faster on GPU)
+EPOCHS = 1            # Half the epochs
+LEARNING_RATE = 8e-3
+MODEL_NAME = "google/mobilenet_v2_1.0_224"
 
+CLASSES = [0,]
+CLASS_NAMES = ["apple_pie"]
+
+num_labels=101
+
+print(f"⚡ MODE: {SAMPLE_SIZE} samples, {EPOCHS} epochs, batch {BATCH_SIZE}")
+
+
+# ============================================================
+# LOAD DATA (FAST)
+# ============================================================
+
+print("Loading data...")
+dataset = load_dataset("ethz/food101")
+
+# Take small sample
+dataset['train'] = dataset['train'].shuffle(seed=42).select(range(SAMPLE_SIZE))
+
+# Create train / val / test split from train
+train_temp = dataset['train'].train_test_split(test_size=0.2, seed=42)
+val_test = train_temp['test'].train_test_split(test_size=0.5, seed=42)
+
+dataset = {
+    'train': train_temp['train'],
+    'validation': val_test['train'],
+    'test': val_test['test']
+}
+
+print(f"✓ Train: {len(dataset['train'])}, Val: {len(dataset['validation'])}, Test: {len(dataset['test'])}")
+
+
+# ============================================================
+# LOAD MODEL
+# ============================================================
+
+print(f"Loading {MODEL_NAME}...")
+processor = AutoImageProcessor.from_pretrained(MODEL_NAME)
+model = AutoModelForImageClassification.from_pretrained(
+    MODEL_NAME, num_labels=len(CLASSES), ignore_mismatched_sizes=True
+)
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"✓ Using: {device.upper()}")
+
+# ============================================================
+# PREPROCESS (FAST)
+# ============================================================
+
+def transform(batch):
+    inputs = processor(batch['image'], return_tensors='pt')
+    inputs['labels'] = batch['label']
+    return inputs
+
+print("Preprocessing...")
+for split in ['train', 'validation', 'test']:
+    dataset[split] = dataset[split].map(transform, batched=True, remove_columns=['image'])
+    dataset[split].set_format('torch')
+
+print("✓ Preprocessed")
+
+# ============================================================
+# TRAINING SETUP
+# ============================================================
+
+def compute_metrics(pred):
+    return {'accuracy': accuracy_score(pred.label_ids, pred.predictions.argmax(-1))}
+
+training_args = TrainingArguments(
+    output_dir="./results",
+    num_train_epochs=EPOCHS,
+    per_device_train_batch_size=BATCH_SIZE,
+    per_device_eval_batch_size=BATCH_SIZE,
+    learning_rate=LEARNING_RATE,
+    eval_strategy="epoch",
+    save_strategy="no",  # Don't save checkpoints (faster)
+    logging_steps=10,
+    report_to="none",
+)
+
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=dataset['train'],
+    eval_dataset=dataset['validation'],
+    compute_metrics=compute_metrics,
+)
+
+# ============================================================
+# TRAIN (FAST!)
+# ============================================================
+
+print("\n" + "="*60)
+print("⚡ TRAINING")
+print("="*60 + "\n")
+
+start_time = time.time()
+trainer.train()
+training_time = (time.time() - start_time) / 60
+
+# ============================================================
+# EVALUATE
+# ============================================================
+
+print("\n" + "="*60)
+print("📊 RESULTS")
+print("="*60 + "\n")
+
+train_results = trainer.evaluate(dataset['train'])
+val_results = trainer.evaluate(dataset['validation'])
+test_results = trainer.evaluate(dataset['test'])
+
+print(f"Training:   {train_results['eval_accuracy']:.1%}")
+print(f"Validation: {val_results['eval_accuracy']:.1%}")
+print(f"Test:       {test_results['eval_accuracy']:.1%}")
+print(f"Time:       {training_time:.1f} minutes ⚡")
+print(f"Gap:        {(train_results['eval_accuracy'] - val_results['eval_accuracy']):.1%}")
+
+# Quick interpretation
+gap = train_results['eval_accuracy'] - val_results['eval_accuracy']
+if gap > 0.15:
+    print("\n⚠️  OVERFITTING detected (>15% gap)")
+elif gap > 0.05:
+    print("\n⚠️  Slight overfitting (5-15% gap)")
+else:
+    print("\n✓ Good generalization (<5% gap)")
+
+
+# ============================================================
+# CAPTURE FOR CURSOR (COMPLETE)
+# ============================================================
+import json
+import torch.nn.functional as F
+import torch
+from sklearn.metrics import classification_report
+
+# Extract training history
+history = {"epoch": [], "train_loss": [], "val_loss": [], "val_acc": []}
+for entry in trainer.state.log_history:
+    if "loss" in entry and "eval_loss" not in entry:
+        history["train_loss"].append(round(entry["loss"], 4))
+    if "eval_loss" in entry:
+        history["epoch"].append(entry.get("epoch", len(history["epoch"])+1))
+        history["val_loss"].append(round(entry["eval_loss"], 4))
+        history["val_acc"].append(round(entry.get("eval_accuracy", 0), 4))
+
+# Get predictions with confidence
+predictions = trainer.predict(dataset['test'])
+y_pred = predictions.predictions.argmax(-1)
+y_true = predictions.label_ids
+logits = torch.tensor(predictions.predictions)
+probs = F.softmax(logits, dim=1)
+confidences = probs.max(dim=1).values.tolist()
+
+# Confidence breakdown
+correct_conf = [confidences[i] for i in range(len(y_pred)) if y_pred[i] == y_true[i]]
+incorrect_conf = [confidences[i] for i in range(len(y_pred)) if y_pred[i] != y_true[i]]
+
+# Per-class metrics
+report = classification_report(y_true, y_pred, target_names=CLASS_NAMES, output_dict=True)
+
+# Calculate confusion matrix
+predictions = trainer.predict(dataset['test'])
+y_pred = predictions.predictions.argmax(-1)
+y_true = predictions.label_ids
+cm = confusion_matrix(y_true, y_pred)
+
+results = {
+    "config": {
+        "samples": SAMPLE_SIZE,
+        "batch": BATCH_SIZE,
+        "epochs": EPOCHS,
+        "lr": LEARNING_RATE,
+        "model": MODEL_NAME,
+        "classes": CLASS_NAMES,
+    },
+    "metrics": {
+        "train": round(train_results['eval_accuracy'], 4),
+        "val": round(val_results['eval_accuracy'], 4),
+        "test": round(test_results['eval_accuracy'], 4),
+        "gap": round(train_results['eval_accuracy'] - val_results['eval_accuracy'], 4),
+        "time_min": round(training_time, 2),
+    },
+    "per_class": {
+        name: {
+            "accuracy": round(cm[i][i]/cm[i].sum(), 4),
+            "precision": round(report[name]["precision"], 4),
+            "recall": round(report[name]["recall"], 4),
+            "f1": round(report[name]["f1-score"], 4),
+            "support": int(report[name]["support"]),
+        } for i, name in enumerate(CLASS_NAMES)
+    },
+    "confidence": {
+        "correct_mean": round(sum(correct_conf)/len(correct_conf), 4) if correct_conf else 0,
+        "incorrect_mean": round(sum(incorrect_conf)/len(incorrect_conf), 4) if incorrect_conf else 0,
+        "correct_dist": [round(c, 3) for c in correct_conf],
+        "incorrect_dist": [round(c, 3) for c in incorrect_conf],
+    },
+    "confusion_matrix": cm.tolist(),
+    "history": history,
+    "predictions": {
+        "y_true": y_true.tolist(),
+        "y_pred": y_pred.tolist(),
+        "confidences": [round(c, 4) for c in confidences],
+    },
+}
+
+with open("run.json", "w") as f:
+    json.dump(results, f)

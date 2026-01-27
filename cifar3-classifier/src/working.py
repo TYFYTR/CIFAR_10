@@ -2,6 +2,7 @@
 # ULTRA-FAST LEARNING VERSION (2-3 min per run)
 # ============================================================
 
+
 from datasets import load_dataset
 from transformers import AutoImageProcessor, AutoModelForImageClassification, TrainingArguments, Trainer
 from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
