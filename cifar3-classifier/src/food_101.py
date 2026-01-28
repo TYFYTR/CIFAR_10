@@ -22,23 +22,21 @@ load_best_model_at_end = True    # NEW
 metric_for_best_model = "eval_accuracy"
 
 
-SAMPLE_SIZE = 50    # 10x smaller (1500 total images)
-BATCH_SIZE = 16        # 2x larger (faster on GPU)
-EPOCHS = 1            # Half the epochs
-LEARNING_RATE = 8e-3
+SAMPLE_SIZE = 300
+BATCH_SIZE = 8       # 2x larger (faster on GPU)
+EPOCHS = 10         # Half the epochs
+LEARNING_RATE = 0.0001
 MODEL_NAME = "google/mobilenet_v2_1.0_224"
 
 WEIGHT_DECAY = 0.1
 LABEL_SMOOTHING_FACTOR = 0.1
 
-CLASSES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-CLASS_NAMES = ["apple_pie", "baby_back_ribs", "baklava", "beef_carpaccio", "beef_tartare", 'beet_salad' ,'beignets', 'bibimbap', 'bread_pudding', 'breakfast_burrito']
+CLASSES = [0, 1, 2,]
+CLASS_NAMES = ["apple_pie", "baby_back_ribs", "baklava",] 
 
 
 # CLASSES = [0, 1,]
 # CLASS_NAMES = ["apple_pie", "baby_back_ribs",]
-
-
 
 
 print(f"⚡ MODE: {SAMPLE_SIZE} samples, {EPOCHS} epochs, batch {BATCH_SIZE}")
@@ -88,11 +86,11 @@ model = AutoModelForImageClassification.from_pretrained(
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"✓ Using: {device.upper()}")
 
+
+
 # ============================================================
 # PREPROCESS (FAST)
 # ============================================================
-
-
 
 
 # Create augmentation pipeline
@@ -133,6 +131,7 @@ for split in ['train', 'validation', 'test']:
     dataset[split] = dataset[split].map(transform, batched=True, remove_columns=['image'])
     dataset[split].set_format('torch')
 
+
 print("✓ Preprocessed")
 
 # ============================================================
@@ -148,12 +147,15 @@ training_args = TrainingArguments(
     per_device_train_batch_size=BATCH_SIZE,
     per_device_eval_batch_size=BATCH_SIZE,
     learning_rate=LEARNING_RATE,
-    weight_decay= WEIGHT_DECAY,
+    #weight_decay= WEIGHT_DECAY,
     eval_strategy="epoch",
     save_strategy="no",  # Don't save checkpoints (faster)
     logging_steps=10,
     report_to="none",
-    label_smoothing_factor=LABEL_SMOOTHING_FACTOR,
+    #label_smoothing_factor=LABEL_SMOOTHING_FACTOR,
+    #lr_scheduler_type="cosine",
+    #warmup_steps=100,
+    #gradient_accumulation_steps=2,
 )
 
 trainer = Trainer(
@@ -278,6 +280,8 @@ results = {
         "lr": LEARNING_RATE,
         "model": MODEL_NAME,
         "classes": CLASS_NAMES,
+        "weight_decay": WEIGHT_DECAY,
+        "label_smoothing_factor": LABEL_SMOOTHING_FACTOR,
     },
     "metrics": {
         "train": round(train_results['eval_accuracy'], 4),
@@ -310,5 +314,11 @@ results = {
     },
 }
 
-with open("run.json", "w") as f:
-    json.dump(results, f)
+# Save results to JSON file
+output_file = "run.json"
+with open(output_file, "w") as f:
+    json.dump(results, f, indent=2)
+
+print(f"\n{'='*60}")
+print(f"✓ Results saved to: {output_file}")
+print(f"{'='*60}\n")
