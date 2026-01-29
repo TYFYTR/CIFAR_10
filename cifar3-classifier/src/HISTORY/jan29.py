@@ -22,21 +22,32 @@ load_best_model_at_end = True    # NEW
 metric_for_best_model = "eval_accuracy"
 
 
-SAMPLE_SIZE = 300
-BATCH_SIZE = 8       # 2x larger (faster on GPU)
-EPOCHS = 10         # Half the epochs
+SAMPLE_SIZE = 100
+BATCH_SIZE = 4       # 2x larger (faster on GPU)
+EPOCHS = 1           # Half the epochs
 LEARNING_RATE = 0.0001
 MODEL_NAME = "google/mobilenet_v2_1.0_224"
 
-WEIGHT_DECAY = 0.1
-LABEL_SMOOTHING_FACTOR = 0.1
+WEIGHT_DECAY = 0.01
 
-CLASSES = [0, 1, 2,]
-CLASS_NAMES = ["apple_pie", "baby_back_ribs", "baklava",] 
+NUM_EPOCHS_STOP = 3 
+
+WARMUP_STEPS = 100
+
+HORIZONTAL_FLIP_PROBABILITY = 0.5
+ROTATION_DEGREES = 20
+BRIGHTNESS = 0.3
+CONTRAST = 0.3
+SATURATION = 0.3
+HUE = 0.1
+SCALE_MIN = 0.7
+SCALE_MAX = 1.0
+TRANSLATE_MIN = 0.1
+TRANSLATE_MAX = 0.1
 
 
-# CLASSES = [0, 1,]
-# CLASS_NAMES = ["apple_pie", "baby_back_ribs",]
+CLASSES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49]
+CLASS_NAMES = ["apple_pie", "baby_back_ribs", "baklava", "beef_carpaccio", "beef_tartare", "beet_salad", "beignets", "bibimbap", "bread_pudding", "breakfast_burrito", "bruschetta", "caesar_salad", "cannoli", "caprese_salad", "carrot_cake", "ceviche", "cheesecake", "cheese_plate", "chicken_curry", "chicken_quesadilla", "chicken_wings", "chocolate_cake", "chocolate_mousse", "churros", "clam_chowder", "club_sandwich", "crab_cakes", "creme_brulee", "croque_madame", "cup_cakes", "deviled_eggs", "donuts", "dumplings", "edamame", "eggs_benedict", "escargots", "falafel", "filet_mignon", "fish_and_chips", "foie_gras", "french_fries", "french_onion_soup", "french_toast", "fried_calamari", "fried_rice", "frozen_yogurt", "garlic_bread", "gnocchi", "greek_salad", "grilled_cheese_sandwich",]
 
 
 print(f"⚡ MODE: {SAMPLE_SIZE} samples, {EPOCHS} epochs, batch {BATCH_SIZE}")
@@ -95,11 +106,11 @@ print(f"✓ Using: {device.upper()}")
 
 # Create augmentation pipeline
 train_transforms = transforms.Compose([
-    transforms.RandomHorizontalFlip(p=0.5),
-    transforms.RandomRotation(20),  # Food can be at any angle
-    transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),  # Lighting varies!
-    transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),  # Zoom in/out
-    transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # Slight shifts
+    transforms.RandomHorizontalFlip(p=HORIZONTAL_FLIP_PROBABILITY),
+    transforms.RandomRotation(ROTATION_DEGREES),  # Food can be at any angle
+    transforms.ColorJitter(brightness=BRIGHTNESS, contrast=CONTRAST, saturation=SATURATION, hue=HUE),  # Lighting varies!
+    transforms.RandomResizedCrop(224, scale=(SCALE_MIN, SCALE_MAX)),  # Zoom in/out
+    transforms.RandomAffine(degrees=0, translate=(TRANSLATE_MIN, TRANSLATE_MAX)),  # Slight shifts
 ])
 
 def transform(batch):
@@ -147,15 +158,19 @@ training_args = TrainingArguments(
     per_device_train_batch_size=BATCH_SIZE,
     per_device_eval_batch_size=BATCH_SIZE,
     learning_rate=LEARNING_RATE,
-    #weight_decay= WEIGHT_DECAY,
+    weight_decay= WEIGHT_DECAY,
+
+        # LR Scheduler
+    lr_scheduler_type="cosine",
+    warmup_steps=WARMUP_STEPS,
+
     eval_strategy="epoch",
-    save_strategy="no",  # Don't save checkpoints (faster)
+    save_strategy="epoch",  # Don't save checkpoints (faster)
     logging_steps=10,
     report_to="none",
     #label_smoothing_factor=LABEL_SMOOTHING_FACTOR,
-    #lr_scheduler_type="cosine",
-    #warmup_steps=100,
-    #gradient_accumulation_steps=2,
+    load_best_model_at_end=load_best_model_at_end,
+    metric_for_best_model=metric_for_best_model,
 )
 
 trainer = Trainer(
@@ -164,27 +179,13 @@ trainer = Trainer(
     train_dataset=dataset['train'],
     eval_dataset=dataset['validation'],
     compute_metrics=compute_metrics,
+    callbacks=[EarlyStoppingCallback(early_stopping_patience=NUM_EPOCHS_STOP)],
 )
 
 # ============================================================
 # Check point 
 # ============================================================
-print(f"Learning rate: {LEARNING_RATE}")
-print(f"Batch size: {BATCH_SIZE}")
-print(f"Epochs: {EPOCHS}")
-print(f"Model: {MODEL_NAME}")
-print(f"Classes: {CLASS_NAMES}")
-print(f"Sample size: {SAMPLE_SIZE}")
-print(f"Weight decay: {WEIGHT_DECAY}")
-print(f"Label smoothing factor: {LABEL_SMOOTHING_FACTOR}")
 
-print(f"Train sample label: {dataset['train'][0]['labels']}")
-print(f"Val sample label: {dataset['validation'][0]['labels']}")
-print(f"Expected range: 0 to {len(CLASSES)-1}")
-
-
-
-input("Press Enter to continue...")
 
 # ============================================================
 # TRAIN (FAST!)
